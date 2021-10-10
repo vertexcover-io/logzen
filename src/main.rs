@@ -60,35 +60,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     for line in reader.lines() {
         let line = line.unwrap();
-        println!("{}", parse_timestamp(line.as_str(), regex_list.as_slice()))
+        println!(
+            "{}",
+            find_and_replace_timestamp(line.as_str(), regex_list.as_slice())
+        )
     }
     Ok(())
 }
 
-fn parse_timestamp(line: &str, regex_list: &[DateTimePattern]) -> String {
+fn parse_timestamp(m: &str, pat: &DateTimePattern) -> Result<String, chrono::ParseError> {
+    let tz = chrono::Local;
+    let dt = if pat.is_naive {
+        let format = if pat.zulu {
+            &pat.format[..pat.format.len() - 1]
+        } else {
+            pat.format
+        };
+        let local = chrono::NaiveDateTime::parse_from_str(m, pat.format)?;
+        chrono::DateTime::<Utc>::from_utc(local, Utc)
+            .with_timezone(&tz)
+            .format(format!("{}%:z", format).as_str())
+            .to_string()
+    } else {
+        chrono::DateTime::parse_from_str(m, pat.format)?
+            .with_timezone(&tz)
+            .format(pat.format)
+            .to_string()
+    };
+    Ok(dt)
+}
+
+fn find_and_replace_timestamp(line: &str, regex_list: &[DateTimePattern]) -> String {
     for pat in regex_list {
         if let Some(m) = pat.regex.find(line) {
-            let tz = chrono::Local;
-            let dt = if pat.is_naive {
-                let format = if pat.zulu {
-                    &pat.format[..pat.format.len() - 1]
-                } else {
-                    pat.format
-                };
-                let local = chrono::NaiveDateTime::parse_from_str(m.as_str(), pat.format).unwrap();
-                chrono::DateTime::<Utc>::from_utc(local, Utc)
-                    .with_timezone(&tz)
-                    .format(format!("{}%:z", format).as_str())
-                    .to_string()
-            } else {
-                chrono::DateTime::parse_from_str(m.as_str(), pat.format)
-                    .unwrap()
-                    .with_timezone(&tz)
-                    .format(pat.format)
-                    .to_string()
-            };
-
-            return line.replace(m.as_str(), &dt).to_string();
+            if let Ok(dt) = parse_timestamp(m.as_str(), pat) {
+                return line.replace(m.as_str(), dt.as_str());
+            }
         }
     }
     line.to_string()
