@@ -28,6 +28,25 @@ const NANO_SECOND_REGEX: &'static str = r"(?:\d{9}|\d{6}|\d{3})";
 
 const DEFAULT_FORMATS: [&str; 4] = ["%+", "%c", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z"];
 
+#[derive(Debug)]
+struct DateTimePattern<'a> {
+    format: &'a str,
+    regex: Regex,
+    is_naive: bool,
+    zulu: bool,
+}
+
+#[derive(Debug)]
+struct Config<'a> {
+    input_file: Option<&'a str>,
+    input_formats: HashSet<&'a str>,
+    output_format: &'a str,
+    dry_run: bool,
+    in_place_write: bool,
+    output_file: Option<&'a str>,
+    strip_escaped_codes: bool,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("logzen")
         .version(VERSION)
@@ -101,14 +120,6 @@ fn find_and_replace_timestamp(line: &str, regex_list: &[DateTimePattern]) -> Str
     line.to_string()
 }
 
-#[derive(Debug)]
-struct DateTimePattern<'a> {
-    format: &'a str,
-    regex: Regex,
-    is_naive: bool,
-    zulu: bool,
-}
-
 fn convert_dt_spec_regex(fmt: &str) -> Result<DateTimePattern, std::fmt::Error> {
     let items = StrftimeItems::new(fmt);
     let mut regex: String = "".to_string();
@@ -155,7 +166,7 @@ fn convert_dt_spec_regex(fmt: &str) -> Result<DateTimePattern, std::fmt::Error> 
                     Nanosecond3 => write!(regex, r"\.\d{{3}}")?,
                     Nanosecond6 => write!(regex, r"\.\d{{6}}")?,
                     Nanosecond9 => write!(regex, r"\.\d{{9}}")?,
-                    TimezoneName => todo!(),
+                    TimezoneName => write!(regex, r"[A-Za-z/]+")?,
                     TimezoneOffsetColon => {
                         is_naive = false;
                         write!(regex, r"[+-]\d{{2}}:\d{{2}}")?;
